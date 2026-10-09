@@ -1,0 +1,128 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  name      String
+  email     String    @unique
+  role      String    @default("STUDENT") // "ADMIN" or "STUDENT"
+  phone     String?
+  avatar    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  bookings  Booking[]
+}
+
+model Room {
+  id          String      @id @default(uuid())
+  name        String
+  code        String      @unique
+  capacity    Int         @default(10) // Batas kapasitas maksimum siswa
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  classSlots  ClassSlot[]
+}
+
+model Subject {
+  id          String      @id @default(uuid())
+  name        String
+  code        String      @unique
+  description String?
+  color       String      @default("#3b82f6") // Hex color for badge styling
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  tutors      TutorSubject[]
+  classSlots  ClassSlot[]
+}
+
+model Tutor {
+  id          String         @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  bio         String?
+  avatar      String?
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  subjects    TutorSubject[]
+  classSlots  ClassSlot[]
+}
+
+// Junction table: Tutor can teach multiple Subjects
+model TutorSubject {
+  id        String   @id @default(uuid())
+  tutorId   String
+  subjectId String
+  tutor     Tutor    @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([tutorId, subjectId])
+}
+
+model TimeSession {
+  id        String      @id @default(uuid())
+  name      String      // e.g. "Sesi 1 (Pagi)"
+  startTime String      // "08:00"
+  endTime   String      // "09:30"
+  order     Int         @default(1)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  classSlots ClassSlot[]
+}
+
+// ClassSlot represents a scheduled teaching instance:
+// {Hari + Sesi Jam + Mapel + Tutor + Ruangan}
+model ClassSlot {
+  id            String      @id @default(uuid())
+  dayOfWeek     String      // "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"
+  timeSessionId String
+  subjectId     String
+  tutorId       String
+  roomId        String
+  notes         String?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  timeSession   TimeSession @relation(fields: [timeSessionId], references: [id], onDelete: Cascade)
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  tutor         Tutor       @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  room          Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bookings      Booking[]
+
+  // Business Rules Unique Constraints:
+  // 1. One room can only host one class at the same day & session
+  @@unique([dayOfWeek, timeSessionId, roomId], name: "unique_room_day_session")
+  // 2. One tutor can only teach one class at the same day & session (no clash)
+  @@unique([dayOfWeek, timeSessionId, tutorId], name: "unique_tutor_day_session")
+}
+
+model Booking {
+  id          String      @id @default(uuid())
+  ticketCode  String      @unique // e.g. "TIK-202610-8472"
+  studentId   String
+  classSlotId String
+  status      String      @default("CONFIRMED") // "CONFIRMED", "CANCELLED", "COMPLETED"
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  student     User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classSlot   ClassSlot   @relation(fields: [classSlotId], references: [id], onDelete: Cascade)
+
+  // Rule 4: Siswa cannot double-book the same class slot
+  @@unique([studentId, classSlotId], name: "unique_student_class_slot")
+}
